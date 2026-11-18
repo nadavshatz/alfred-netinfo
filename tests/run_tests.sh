@@ -87,6 +87,14 @@ reset_mocks; print '2001:db8::1' > $MOCK_DIR/ext
 check "IPv6 external address accepted" eval '[[ $(titles ip | head -1) == "External IP: 2001:db8::1" ]]'
 reset_mocks; print '999.1.1.1' > $MOCK_DIR/ext
 check "out-of-range IPv4 rejected" eval '[[ $(titles ip | head -1) == "External IP unavailable" ]]'
+for bogus in ":::" "abc:def:0" "1:2:3:4:5:6:7:8:9" "1::2::3" "12345::1"; do
+  reset_mocks; print -r -- $bogus > $MOCK_DIR/ext
+  check "bogus IPv6 '$bogus' rejected" eval '[[ $(titles ip | head -1) == "External IP unavailable" ]]'
+done
+for good in "::1" "fe80::1" "2001:db8:0:0:0:0:0:1"; do
+  reset_mocks; print -r -- $good > $MOCK_DIR/ext
+  check "IPv6 '$good' accepted" eval '[[ $(titles ip | head -1) == "External IP: $good" ]]'
+done
 
 reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
 out=$(ext_ip_url=http://api.ipify.org ni ip)
@@ -165,6 +173,17 @@ check "unknown action is refused" eval '[[ $(action "rm -rf /") == "Unknown acti
 touch $MOCK_DIR/offline
 check "manual check offline reports it" eval '[[ $(action update_check now) == "Could not reach GitHub to check for updates" ]]'
 check "update requests are https-only" eval '[[ $(<$MOCK_DIR/curl.log) == *"=https"* ]]'
+first_args_q() {  # every logged curl call (calls separated by a "--" line) starts with -q
+  local -a lines=(${(f)"$(<$MOCK_DIR/curl.log)"})
+  integer i start=1
+  for (( i = 1; i <= $#lines; i++ )); do
+    if (( start )); then [[ $lines[i] == -q ]] || return 1; start=0; fi
+    [[ $lines[i] == -- && ${lines[i+1]:-} != http* ]] && start=1
+  done
+  return 0
+}
+rm -f $MOCK_DIR/offline $MOCK_DIR/curl.log; action update_check now >/dev/null; ni ip >/dev/null
+check "every curl call ignores ~/.curlrc (-q first)" first_args_q
 
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))

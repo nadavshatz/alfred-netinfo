@@ -19,14 +19,33 @@ valid_ip() {
     for o in ${(s:.:)s}; do [[ $o == (0|[1-9][0-9]#) ]] || return 1; done
     return 0
   fi
-  [[ $s == [0-9a-fA-F:]## && $s == *:*:* && ${#s} -le 45 ]]
+  valid_ipv6 "$s"
+}
+
+# valid_ipv6 STR: 8 groups of 1–4 hex digits, or fewer around exactly one "::".
+valid_ipv6() {
+  local s=$1 g
+  [[ $s == [0-9a-fA-F:]## && ${#s} -le 39 && $s == *:* ]] || return 1
+  local -a groups
+  if [[ $s == *::* ]]; then
+    [[ $s == *::*::* ]] && return 1
+    local l=${s%%::*} r=${s#*::}
+    [[ -n $l ]] && groups+=("${(@s.:.)l}")
+    [[ -n $r ]] && groups+=("${(@s.:.)r}")
+    (( $#groups <= 7 )) || return 1
+  else
+    groups=("${(@s.:.)s}")
+    (( $#groups == 8 )) || return 1
+  fi
+  for g in "${groups[@]}"; do [[ $g == [0-9a-fA-F](#c1,4) ]] || return 1; done
+  return 0
 }
 
 # external_ip → REPLY=validated address; returns 1 on any failure.
 external_ip() {
   REPLY=
   local out
-  out=$($CURL --proto '=https' --tlsv1.2 -fsS --max-time 3 -- "$EXT_URL" 2>/dev/null) || return 1
+  out=$($CURL -q --proto '=https' --tlsv1.2 -fsS --max-time 3 -- "$EXT_URL" 2>/dev/null) || return 1
   out=${out%%[[:space:]]#}
   valid_ip "$out" || return 1
   REPLY=$out

@@ -76,7 +76,7 @@ update_mark_checked() {  # version
 fetch_latest() {
   REPLY=
   local hdr
-  hdr=$($UPD_CURL --proto '=https' -fsSI --max-time 10 "$UPD_REPO/releases/latest" 2>/dev/null) || return 1
+  hdr=$($UPD_CURL -q --proto '=https' --tlsv1.2 -fsSI --max-time 10 "$UPD_REPO/releases/latest" 2>/dev/null) || return 1
   [[ $hdr == (#b)*[Ll]ocation:[[:blank:]]#[^[:space:]]#/releases/tag/v([0-9][0-9A-Za-z.-]#)* ]] || return 1
   valid_version $match[1] || return 1
   REPLY=$match[1]
@@ -93,8 +93,8 @@ download_release() {
   local url="$UPD_REPO/releases/download/v$v/$name" dst="$UPD_CACHE/$name"
   REPLY=
   rm -f -- $dst $dst.sha256
-  $UPD_CURL --proto '=https' -fsSL --max-time 120 -o $dst "$url" 2>/dev/null || { UPD_ERR="download failed"; return 1 }
-  $UPD_CURL --proto '=https' -fsSL --max-time 30 -o $dst.sha256 "$url.sha256" 2>/dev/null || { UPD_ERR="checksum missing"; return 1 }
+  $UPD_CURL -q --proto '=https' --tlsv1.2 -fsSL --max-time 120 -o $dst "$url" 2>/dev/null || { UPD_ERR="download failed"; return 1 }
+  $UPD_CURL -q --proto '=https' --tlsv1.2 -fsSL --max-time 30 -o $dst.sha256 "$url.sha256" 2>/dev/null || { UPD_ERR="checksum missing"; return 1 }
   local want got
   read -r want _ < $dst.sha256
   sha256_of $dst; got=$REPLY; REPLY=
