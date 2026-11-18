@@ -1,0 +1,18 @@
+#!/bin/sh
+# Mock networksetup: prints $MOCK_DIR/ports if present, else a default fixture.
+[ "$1" = -listnetworkserviceorder ] || exit 1
+[ -f "$MOCK_DIR/ports" ] && { cat "$MOCK_DIR/ports"; exit 0; }
+cat <<'X'
+An asterisk (*) denotes that a network service is disabled.
+(1) USB 10/100/1000 LAN
+(Hardware Port: USB 10/100/1000 LAN, Device: en7)
+
+(2) Thunderbolt Bridge
+(Hardware Port: Thunderbolt Bridge, Device: bridge0)
+
+(3) Wi-Fi
+(Hardware Port: Wi-Fi, Device: en0)
+
+(*) VPN "Work"
+(Hardware Port: Work "VPN", Device: )
+X

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Mock ipconfig getifaddr DEV → $MOCK_DIR/ip_DEV
+echo "ipconfig $*" >> "$MOCK_DIR/calls.log"
+[ "$1" = getifaddr ] && [ $# -eq 2 ] || exit 1
+[ -f "$MOCK_DIR/ip_$2" ] && { cat "$MOCK_DIR/ip_$2"; exit 0; }
+exit 1
