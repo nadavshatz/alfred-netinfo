@@ -99,10 +99,10 @@ done
 reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
 out=$(ext_ip_url=http://api.ipify.org ni ip)
 check "http:// service refused" eval '[[ $(print -r -- $out | jq -r ".items[0].title") == "External IP service must use https://" ]]'
-check "http:// service: curl never called" eval '[[ ! -e $MOCK_DIR/curl.log ]]'
+check "http:// service: never fetched" eval '[[ ! -e $MOCK_DIR/curl.log || $(<$MOCK_DIR/curl.log) != *"http://api.ipify.org"* ]]'
 reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
 out=$(ext_ip_url='https://x -o /tmp/p' ni ip)
-check "URL with whitespace refused" eval '[[ $(print -r -- $out | jq -r ".items[0].title") == "External IP service must use https://" && ! -e $MOCK_DIR/curl.log ]]'
+check "URL with whitespace refused" eval '[[ $(print -r -- $out | jq -r ".items[0].title") == "External IP service must use https://" && $(<$MOCK_DIR/curl.log) != *"https://x"* ]]'
 
 reset_mocks
 print 'Evil, Device: en0)' > /dev/null
@@ -184,6 +184,33 @@ first_args_q() {  # every logged curl call (calls separated by a "--" line) star
 }
 rm -f $MOCK_DIR/offline $MOCK_DIR/curl.log; action update_check now >/dev/null; ni ip >/dev/null
 check "every curl call ignores ~/.curlrc (-q first)" first_args_q
+
+# --- external IPv6 ---------------------------------------------------------------
+reset_mocks; print 192.168.1.5 > $MOCK_DIR/ip_en0; print 203.0.113.7 > $MOCK_DIR/ext; print 2001:db8::5 > $MOCK_DIR/ext6
+out=$(ni ip)
+check "IPv6 shown right after IPv4" \
+  eval '[[ $(print -r -- $out | jq -r "[.items[0:3][].title] | join(\"|\")") == "External IP: 203.0.113.7|External IPv6: 2001:db8::5|Wi-Fi (en0): 192.168.1.5" ]]'
+check "IPv6 item arg is the bare address" eval '[[ $(print -r -- $out | jq -r ".items[1].arg") == 2001:db8::5 ]]'
+calls=${(j: :)${(f)"$(<$MOCK_DIR/curl.log)"}}
+check "IPv4 lookup forced over IPv4 (-4)" eval '[[ $calls == *"-4"*"https://api.ipify.org"* ]]'
+check "IPv6 lookup forced over IPv6 (-6), https only" eval '[[ $calls == *"-6"*"https://api6.ipify.org"* && $calls == *"=https"* ]]'
+check "both lookups ignore ~/.curlrc" first_args_q
+
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
+out=$(ni ip)
+check "no IPv6 connectivity → no IPv6 item, no warning" \
+  eval '[[ $(print -r -- $out | jq -r ".items[].title") != *IPv6* && $(print -r -- $out | jq "[.items[]|select(.valid==false)]|length") == 0 ]]'
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext; print '<html>' > $MOCK_DIR/ext6
+check "IPv6 garbage → no item" eval '[[ $(titles ip) != *IPv6* ]]'
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext; print 1.2.3.4 > $MOCK_DIR/ext6
+check "IPv4 answer on the IPv6 endpoint → no IPv6 item" eval '[[ $(titles ip) != *IPv6* ]]'
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext; print 2001:db8::5 > $MOCK_DIR/ext6
+check "empty IPv6 setting turns it off" eval '[[ $(ext_ip6_url= titles ip) != *IPv6* && $(<$MOCK_DIR/curl.log) != *api6* ]]'
+rm -f $MOCK_DIR/curl.log
+check "http:// IPv6 service refused, never fetched" \
+  eval '[[ $(ext_ip6_url=http://api6.ipify.org titles ip) == *"External IPv6 service must use https://"* && $(<$MOCK_DIR/curl.log) != *"http://api6"* ]]'
+reset_mocks; touch $MOCK_DIR/offline
+check "offline: both lookups fail without extra items" eval '[[ $(titles ip) != *IPv6* ]]'
 
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))
