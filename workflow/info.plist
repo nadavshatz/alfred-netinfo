@@ -449,6 +449,27 @@ Source &amp; docs: https://github.com/nadavshatz/alfred-netinfo</string>
 			<key>config</key>
 			<dict>
 				<key>default</key>
+				<string>https://api6.ipify.org</string>
+				<key>placeholder</key>
+				<string>https://api6.ipify.org</string>
+				<key>required</key>
+				<false/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Must start with https://. Leave empty to skip the IPv6 lookup.</string>
+			<key>label</key>
+			<string>External IPv6 service</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>ext_ip6_url</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
 				<string>notify</string>
 				<key>pairs</key>
 				<array>

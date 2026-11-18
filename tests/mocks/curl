@@ -27,5 +27,9 @@ if [[ $url == */releases/* ]]; then
   [[ -f $src ]] || exit 22
   cp -- $src $out; exit 0
 fi
+if [[ $url == *api6* ]]; then
+  [[ -f $MOCK_DIR/ext6 ]] || exit 22
+  cat $MOCK_DIR/ext6; exit 0
+fi
 [[ -f $MOCK_DIR/ext ]] || exit 22
 cat $MOCK_DIR/ext
