@@ -1,5 +1,11 @@
 #!/bin/sh
 # Mock networksetup: prints $MOCK_DIR/ports if present, else a default fixture.
+if [ "$1" = -getmacaddress ]; then
+  echo "networksetup $*" >> "$MOCK_DIR/calls.log"
+  [ $# -eq 2 ] || exit 1
+  [ -f "$MOCK_DIR/mac_$2" ] || { echo "** Error: The parameters were not valid."; exit 4; }
+  echo "Ethernet Address: $(cat "$MOCK_DIR/mac_$2") (Device: $2)"; exit 0
+fi
 [ "$1" = -listnetworkserviceorder ] || exit 1
 [ -f "$MOCK_DIR/ports" ] && { cat "$MOCK_DIR/ports"; exit 0; }
 cat <<'X'

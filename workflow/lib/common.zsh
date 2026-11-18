@@ -12,7 +12,6 @@ typeset -r NI_WF_DIR="${${(%):-%x}:A:h:h}"          # .../workflow
 
 typeset -r NETWORKSETUP="${NI_NETWORKSETUP:-/usr/sbin/networksetup}"
 typeset -r IPCONFIG="${NI_IPCONFIG:-/usr/sbin/ipconfig}"
-typeset -r IFCONFIG="${NI_IFCONFIG:-/sbin/ifconfig}"
 
 # ---------------------------------------------------------------------------
 # Alfred JSON

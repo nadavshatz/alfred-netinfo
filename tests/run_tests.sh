@@ -12,7 +12,7 @@ trap 'rm -rf $SANDBOX' EXIT
 
 export MOCK_DIR=$SANDBOX/mock
 export NI_NETWORKSETUP=$ROOT/tests/mocks/networksetup NI_IPCONFIG=$ROOT/tests/mocks/ipconfig
-export NI_IFCONFIG=$ROOT/tests/mocks/ifconfig NI_CURL=$ROOT/tests/mocks/curl NI_OPEN=$ROOT/tests/mocks/open
+export NI_CURL=$ROOT/tests/mocks/curl NI_OPEN=$ROOT/tests/mocks/open
 export alfred_workflow_cache=$SANDBOX/cache alfred_workflow_data=$SANDBOX/data
 export alfred_workflow_version=1.0.0 update_mode=off
 mkdir -p $MOCK_DIR
@@ -59,7 +59,71 @@ check "valid_device accepts en0, bridge0, utun12" eval 'valid_dev en0 && valid_d
 check "valid_device rejects '-a', 'en0;x', '', 'en 0'" \
   eval '! valid_dev -a && ! valid_dev "en0;x" && ! valid_dev "" && ! valid_dev "en 0"'
 
-# ==== TASK2 ====
+# --- ip ------------------------------------------------------------------------
+reset_mocks
+print 192.168.1.5 > $MOCK_DIR/ip_en0
+print 203.0.113.7 > $MOCK_DIR/ext
+out=$(ni ip)
+check "ip emits valid JSON" eval 'print -r -- $out | jq -e . >/dev/null'
+t=$(print -r -- $out | jq -r '.items[].title')
+check "external IP is first" eval '[[ ${${(f)t}[1]} == "External IP: 203.0.113.7" ]]'
+check "Wi-Fi local IP listed" eval '[[ ${${(f)t}[2]} == "Wi-Fi (en0): 192.168.1.5" ]]'
+check "interfaces without an address are omitted" eval '[[ $(print -r -- $out | jq ".items|length") == 2 ]]'
+check "local item arg is the bare IP" eval '[[ $(print -r -- $out | jq -r ".items[1].arg") == 192.168.1.5 ]]'
+check "external IP fetched over https only, 3s timeout" \
+  eval '[[ ${(j: :)${(f)"$(<$MOCK_DIR/curl.log)"}} == *"--proto =https"*"--max-time 3"*"https://api.ipify.org"* ]]'
+
+reset_mocks; print 192.168.1.5 > $MOCK_DIR/ip_en0; touch $MOCK_DIR/offline
+out=$(ni ip)
+check "offline: external item says unavailable and is not actionable" \
+  eval '[[ $(print -r -- $out | jq -r ".items[0] | [.title,.valid] | @tsv") == "External IP unavailable	false" ]]'
+check "offline: local IP still listed" eval '[[ $(print -r -- $out | jq -r ".items[1].title") == "Wi-Fi (en0): 192.168.1.5" ]]'
+
+reset_mocks; print '<html>pwned</html>' > $MOCK_DIR/ext
+check "non-IP response is not displayed" eval '[[ $(titles ip | head -1) == "External IP unavailable" ]]'
+reset_mocks; print '1.2.3.4; rm -rf ~' > $MOCK_DIR/ext
+check "IP followed by junk is rejected" eval '[[ $(titles ip | head -1) == "External IP unavailable" ]]'
+reset_mocks; print '2001:db8::1' > $MOCK_DIR/ext
+check "IPv6 external address accepted" eval '[[ $(titles ip | head -1) == "External IP: 2001:db8::1" ]]'
+reset_mocks; print '999.1.1.1' > $MOCK_DIR/ext
+check "out-of-range IPv4 rejected" eval '[[ $(titles ip | head -1) == "External IP unavailable" ]]'
+
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
+out=$(ext_ip_url=http://api.ipify.org ni ip)
+check "http:// service refused" eval '[[ $(print -r -- $out | jq -r ".items[0].title") == "External IP service must use https://" ]]'
+check "http:// service: curl never called" eval '[[ ! -e $MOCK_DIR/curl.log ]]'
+reset_mocks; print 203.0.113.7 > $MOCK_DIR/ext
+out=$(ext_ip_url='https://x -o /tmp/p' ni ip)
+check "URL with whitespace refused" eval '[[ $(print -r -- $out | jq -r ".items[0].title") == "External IP service must use https://" && ! -e $MOCK_DIR/curl.log ]]'
+
+reset_mocks
+print 'Evil, Device: en0)' > /dev/null
+cat > $MOCK_DIR/ports <<'X'
+(Hardware Port: Odd "Port" \ Name, Device: en3)
+(Hardware Port: Injected, Device: en0;touch /tmp/x)
+X
+print 10.0.0.9 > $MOCK_DIR/ip_en3
+out=$(ni ip)
+check "odd port names are JSON-escaped" eval '[[ $(print -r -- $out | jq -r ".items[1].title") == "Odd \"Port\" \\ Name (en3): 10.0.0.9" ]]'
+check "invalid device names never reach ipconfig" eval '[[ $(<$MOCK_DIR/calls.log) != *";"* ]]'
+
+# --- mac -----------------------------------------------------------------------
+reset_mocks
+print aa:bb:cc:dd:ee:ff > $MOCK_DIR/mac_en0
+print 00:11:22:33:44:55 > $MOCK_DIR/mac_en7
+out=$(ni mac)
+check "mac emits valid JSON" eval 'print -r -- $out | jq -e . >/dev/null'
+check "mac lists ports in service order" \
+  eval '[[ $(print -r -- $out | jq -r ".items[].title") == "USB 10/100/1000 LAN (en7) MAC: 00:11:22:33:44:55"$'"'"'\n'"'"'"Wi-Fi (en0) MAC: aa:bb:cc:dd:ee:ff" ]]'
+check "mac arg is the bare address" eval '[[ $(print -r -- $out | jq -r ".items[1].arg") == aa:bb:cc:dd:ee:ff ]]'
+check "mac never calls curl" eval '[[ ! -e $MOCK_DIR/curl.log ]]'
+reset_mocks; print 02:00:00:00:00:00 > $MOCK_DIR/mac_bridge0; print aa:bb:cc:dd:ee:ff > $MOCK_DIR/mac_en0
+check "privacy placeholder 02:00:00:00:00:00 is hidden" eval '[[ $(titles mac) == "Wi-Fi (en0) MAC: aa:bb:cc:dd:ee:ff" ]]'
+check "mac uses networksetup -getmacaddress, not ifconfig" eval '[[ $(<$MOCK_DIR/calls.log) == *"networksetup -getmacaddress en0"* && $(<$MOCK_DIR/calls.log) != *ifconfig* ]]'
+reset_mocks
+check "no MACs → explanatory invalid item" eval '[[ $(ni mac | jq -r ".items[0] | [.title,.valid] | @tsv") == "No MAC addresses found	false" ]]'
+reset_mocks
+check "unknown mode exits non-zero" eval '! ni bogus >/dev/null 2>&1'
 
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))

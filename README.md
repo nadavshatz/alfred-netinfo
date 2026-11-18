@@ -16,7 +16,7 @@ Your local and external IP and MAC addresses, from Alfred.
   3 s timeout) from `https://api.ipify.org` by default; the service is
   configurable but must be `https://`, and the answer is shown only if it is a
   bare IPv4/IPv6 address.
-- Interface names are validated before being passed to `ipconfig`/`ifconfig`
+- Interface names are validated before being passed to `ipconfig`/`networksetup`
   as a single argument; nothing is evaluated by a shell.
 - Updates come from this repo's GitHub Releases and are checked against the
   release's SHA-256, bundle id and version before Alfred is asked to install.
