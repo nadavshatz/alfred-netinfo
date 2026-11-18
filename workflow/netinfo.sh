@@ -50,7 +50,7 @@ do_ip() {
     valid_ip "$addr" || continue
     item "$name ($dev): $addr" "$SUB" "$addr" true $(port_icon "$name")
   done
-  update_notice
+  (( HAS_UPDATER )) && update_notice "$NI_WF_DIR/action.sh"
 }
 
 do_mac() {
@@ -67,8 +67,6 @@ do_mac() {
   done
   (( $#ITEMS )) || item "No MAC addresses found" "networksetup lists no hardware port with a MAC address" "" false warning
 }
-
-update_notice() { : }   # replaced when the updater is present (see lib/update.zsh)
 
 case ${1:-} in
   ip)  do_ip ;;

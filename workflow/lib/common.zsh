@@ -13,6 +13,11 @@ typeset -r NI_WF_DIR="${${(%):-%x}:A:h:h}"          # .../workflow
 typeset -r NETWORKSETUP="${NI_NETWORKSETUP:-/usr/sbin/networksetup}"
 typeset -r IPCONFIG="${NI_IPCONFIG:-/usr/sbin/ipconfig}"
 
+# Updater (lib/update.zsh)
+typeset -r UPD_LABEL=$NI_LABEL UPD_NAME="Network Info" UPD_PKG="Network-Info" UPD_WF_DIR=$NI_WF_DIR
+typeset -r UPD_REPO="${NI_UPDATE_REPO:-https://github.com/nadavshatz/alfred-netinfo}"
+typeset -r UPD_CURL="${NI_CURL:-/usr/bin/curl}" UPD_OPEN="${NI_OPEN:-/usr/bin/open}"
+
 # ---------------------------------------------------------------------------
 # Alfred JSON
 # ---------------------------------------------------------------------------

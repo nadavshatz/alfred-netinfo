@@ -1,0 +1,81 @@
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Version to release, e.g. 1.2.0 (creates tag vX.Y.Z). Leave empty to only run the tests.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Syntax check
+        run: for f in workflow/*.sh workflow/lib/*.zsh scripts/*.sh tests/*.sh; do zsh -n "$f" || exit 1; done
+      - name: Test suite (mocked networksetup/ipconfig/curl)
+        run: zsh tests/run_tests.sh
+      - name: Packaging test
+        run: zsh tests/build_test.sh
+      - name: Lint plist
+        if: runner.os == 'macOS'
+        run: plutil -lint workflow/info.plist
+      - name: Build
+        run: zsh scripts/build.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: runner.os == 'macOS'
+        with:
+          name: Network-Info.alfredworkflow
+          path: dist/*.alfredworkflow
+
+  release:
+    # Publish a GitHub Release with the .alfredworkflow and its .sha256, either
+    # by pushing a tag (git push origin v1.2.0) or from Actions → CI →
+    # "Run workflow" with a version (the job then creates the tag itself).
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release != '')
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve version
+        env:
+          INPUT_RELEASE: ${{ inputs.release }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="${INPUT_RELEASE#v}"; fi
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::invalid version '$v'"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "TAG=v$v" >> "$GITHUB_ENV"
+      - name: Build (version stamped)
+        run: zsh scripts/build.sh "$VERSION"
+      - name: Verify package
+        run: |
+          plutil -lint dist/stage/info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :version' dist/stage/info.plist)" = "$VERSION"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then target=(--verify-tag); else target=(--target "$GITHUB_SHA"); fi
+          gh release create "$TAG" dist/*.alfredworkflow dist/*.alfredworkflow.sha256 \
+            --title "Network Info $TAG" --generate-notes "${target[@]}"

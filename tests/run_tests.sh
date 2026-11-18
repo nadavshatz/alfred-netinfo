@@ -125,5 +125,46 @@ check "no MACs → explanatory invalid item" eval '[[ $(ni mac | jq -r ".items[0
 reset_mocks
 check "unknown mode exits non-zero" eval '! ni bogus >/dev/null 2>&1'
 
+# --- updates -------------------------------------------------------------------
+reset_mocks
+export alfred_workflow_version=1.0.0
+action() { $WF/action.sh "$*" }
+wait_for() { integer i; for (( i = 0; i < 60; i++ )); do eval "$1" && return 0; sleep 0.1; done; return 1 }
+(
+  source $WF/lib/common.zsh; source $WF/lib/update.zsh
+  for spec in "1.2.0 1.1.0" "1.10.0 1.9.9" "1.2.0 1.2.0-beta"; do version_gt ${=spec} || exit 1; done
+  for spec in "1.1.0 1.1.0" "1.0.9 1.1.0" "1.2.0-beta 1.2.0"; do version_gt ${=spec} && exit 1; done
+  exit 0
+) && ok "version_gt ordering" || bad "version_gt ordering"
+UPD=$alfred_workflow_cache/update
+mkpkg() {  # version → a fake GitHub release containing a real build
+  zsh $ROOT/scripts/build.sh $1 >/dev/null
+  mkdir -p $MOCK_DIR/releases/v$1
+  mv -f $ROOT/dist/Network-Info-$1.alfredworkflow $ROOT/dist/Network-Info-$1.alfredworkflow.sha256 $MOCK_DIR/releases/v$1/
+}
+mkpkg 9.0.0
+print 9.0.0 > $MOCK_DIR/latest
+rm -f $UPD
+update_mode=notify ni ip >/dev/null
+check "ip starts a background update check" wait_for '[[ $(cat $UPD 2>/dev/null) == "9.0.0 "* ]]'
+out=$(update_mode=notify ni ip)
+check "newer release announced in ip results" eval '[[ $(print -r -- $out | jq -r ".items[-1].title") == "Update available: Network Info 9.0.0" ]]'
+check "update item routes to the action via variables" \
+  eval '[[ $(print -r -- $out | jq -r ".items[-1] | [.arg, .variables.action] | @tsv") == "update_install 9.0.0	update" ]]'
+check "update_mode=off hides the notice" eval '[[ $(update_mode=off titles ip) != *"Update available"* ]]'
+check "mac never shows update items" eval '[[ $(update_mode=notify titles mac) != *"Update available"* ]]'
+check "manual check: newer available" eval '[[ $(action update_check now) == "Network Info 9.0.0 is available (you have 1.0.0)" ]]'
+msg=$(action update_install 9.0.0)
+check "install downloads, verifies and opens in Alfred" \
+  eval '[[ $msg == "Opening Network Info 9.0.0. Confirm the update in Alfred" && $(<$MOCK_DIR/open.log) == $alfred_workflow_cache/Network-Info-9.0.0.alfredworkflow ]]'
+print "0000000000000000000000000000000000000000000000000000000000000000  x" > $MOCK_DIR/releases/v9.0.0/Network-Info-9.0.0.alfredworkflow.sha256
+rm -f $MOCK_DIR/open.log
+check "tampered download is rejected" eval '[[ $(action update_install 9.0.0) == "Update not installed: checksum mismatch" && ! -e $MOCK_DIR/open.log ]]'
+check "invalid version argument is rejected" eval '[[ $(action update_install "1.x") == "Invalid version: 1.x" ]]'
+check "unknown action is refused" eval '[[ $(action "rm -rf /") == "Unknown action" ]]'
+touch $MOCK_DIR/offline
+check "manual check offline reports it" eval '[[ $(action update_check now) == "Could not reach GitHub to check for updates" ]]'
+check "update requests are https-only" eval '[[ $(<$MOCK_DIR/curl.log) == *"=https"* ]]'
+
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))
